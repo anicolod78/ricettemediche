@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  L'icona di notifica ic_stat_notify è referenziata solo tramite stringa a
+  runtime (AndroidNotificationDetails.icon), quindi il resource shrinker di
+  release la considera inutilizzata e la rimuove. Questo la preserva.
+-->
+<resources
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notify" />
