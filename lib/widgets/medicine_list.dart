@@ -296,28 +296,38 @@ class _MedicineListScreenState extends State<MedicineListScreen> {
                 _sendTestNotification();
               }
             },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'email_settings',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit_note, size: 20),
-                    SizedBox(width: 8),
-                    Text('Testi email'),
-                  ],
+            itemBuilder: (context) {
+              // Colore icone adattato al tema (nel menu, non alla barra):
+              // altrimenti ereditano il bianco dell'AppBar e in light mode
+              // risultano invisibili.
+              final menuIconColor = Theme.of(context).colorScheme.onSurface;
+              return [
+                PopupMenuItem(
+                  value: 'email_settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_note, size: 20, color: menuIconColor),
+                      SizedBox(width: 8),
+                      Text('Testi email'),
+                    ],
+                  ),
                 ),
-              ),
-              PopupMenuItem(
-                value: 'test_notification',
-                child: Row(
-                  children: [
-                    Icon(Icons.notifications_none, size: 20),
-                    SizedBox(width: 8),
-                    Text('Notifica di prova'),
-                  ],
+                PopupMenuItem(
+                  value: 'test_notification',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.notifications_none,
+                        size: 20,
+                        color: menuIconColor,
+                      ),
+                      SizedBox(width: 8),
+                      Text('Notifica di prova'),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ];
+            },
           ),
         ],
       ),
@@ -334,6 +344,12 @@ class _MedicineListScreenState extends State<MedicineListScreen> {
                   children: [
                     Flexible(
                       child: DropdownButtonFormField<String>(
+                        // La key cambia quando cambia l'insieme dei pazienti o
+                        // la selezione, così la dropdown si rigenera in modo
+                        // corretto dopo aggiunta/eliminazione.
+                        key: ValueKey(
+                          '${patients.length}-${_selectedPatientName?.id ?? 'none'}',
+                        ),
                         items: patients.map((p) {
                           return DropdownMenuItem<String>(
                             value: p.id,
@@ -356,9 +372,53 @@ class _MedicineListScreenState extends State<MedicineListScreen> {
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.add),
+                      icon: Icon(Icons.person_add),
                       onPressed: _showAddPatientDialog,
                       tooltip: 'Aggiungi paziente',
+                    ),
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert),
+                      tooltip: 'Gestisci paziente',
+                      // Attivo solo se c'è un paziente selezionato.
+                      enabled: _selectedPatientName != null,
+                      onSelected: (value) {
+                        final p = _selectedPatientName;
+                        if (p == null) return;
+                        if (value == 'edit') {
+                          _showEditPatientDialog(p);
+                        } else if (value == 'delete') {
+                          _showDeletePatientDialog(p);
+                        }
+                      },
+                      itemBuilder: (context) {
+                        final menuIconColor =
+                            Theme.of(context).colorScheme.onSurface;
+                        return [
+                          PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit, size: 20, color: menuIconColor),
+                                SizedBox(width: 8),
+                                Text('Modifica paziente'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, size: 20, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Elimina paziente',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ];
+                      },
                     ),
                   ],
                 ),
@@ -742,6 +802,124 @@ class _MedicineListScreenState extends State<MedicineListScreen> {
                 }
               },
               child: Text('Aggiungi'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Modifica un paziente esistente (mantenendone l'id univoco).
+  void _showEditPatientDialog(Patient patient) {
+    final firstNameController = TextEditingController(text: patient.firstName);
+    final lastNameController = TextEditingController(text: patient.lastName);
+    final fiscalCodeController = TextEditingController(text: patient.fiscalCode);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Modifica Paziente'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: firstNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Nome',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: lastNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Cognome',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: fiscalCodeController,
+                  decoration: InputDecoration(
+                    labelText: 'Codice fiscale',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Annulla'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (firstNameController.text.trim().isEmpty ||
+                    lastNameController.text.trim().isEmpty) {
+                  _showErrorDialog('Compila nome e cognome');
+                  return;
+                }
+                final updated = Patient(
+                  id: patient.id, // stesso id: è una modifica, non un nuovo paziente
+                  firstName: firstNameController.text.trim(),
+                  lastName: lastNameController.text.trim(),
+                  fiscalCode: fiscalCodeController.text.trim(),
+                );
+                setState(() {
+                  final index = patients.indexWhere((p) => p.id == patient.id);
+                  if (index != -1) patients[index] = updated;
+                  // Aggiorna il riferimento se era il paziente selezionato.
+                  if (_selectedPatientName?.id == patient.id) {
+                    _selectedPatientName = updated;
+                  }
+                });
+                _savePatients();
+                Navigator.of(context).pop();
+              },
+              child: Text('Salva'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Elimina un paziente (con conferma).
+  void _showDeletePatientDialog(Patient patient) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Elimina Paziente'),
+          content: Text(
+            'Sei sicuro di voler eliminare "${patient.lastName} ${patient.firstName}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Annulla'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  patients.removeWhere((p) => p.id == patient.id);
+                  // Se era il paziente selezionato, azzera la selezione.
+                  if (_selectedPatientName?.id == patient.id) {
+                    _selectedPatientName = null;
+                    SecureStore.delete('selected_patient_id');
+                  }
+                });
+                _savePatients();
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Elimina'),
             ),
           ],
         );
